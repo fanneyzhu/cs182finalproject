@@ -22,6 +22,8 @@ class BinPacking:
 		# [Box1, Box2, Box3, ...]
 		self.boxes = boxes
 
+	# greedy approach - sort boxes from largest to smallest area
+	# and pack the largest ones first
 	def greedyAlgorithm(self):
 		packed = 0
 		areas = [(i, j) for i,j in enumerate(self.boxes)]
@@ -38,6 +40,8 @@ class BinPacking:
 		print "Packed ", packed, "out of", len(self.boxes), "boxes"
 		self.prettyPrintStorage()
 	
+	# returns first empty spot found for a specified length and width. 
+	# if none is found, returns -1
 	def findEmptySpot(self, length, width):
 		for row in xrange(self.l):
 			for column in xrange(self.w):
@@ -52,6 +56,8 @@ class BinPacking:
 									return (row, column)
 		return (-1, -1)
 
+	# pretty prints the storage space. where the box is located in the storage
+	# space is indicated by the label. -1 indicates an empty space
 	def prettyPrintStorage(self):
 		for i in xrange(self.l):
 			for j in xrange(self.w):
