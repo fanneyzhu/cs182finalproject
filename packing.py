@@ -111,6 +111,7 @@ class BinPacking:
 		num_stored = len(self.storage_list)
 		for row in xrange(self.l): 
 			for column in xrange(self.w):
+				# check if there is space for length*width
 				if row+input_box.width < self.l and column+input_box.width < self.w:
 					for i in xrange(num_stored): 
 						result = box_overlap(row, column, row+input_box.width, 
@@ -121,6 +122,7 @@ class BinPacking:
 							continue
 						elif result == False and i == num_stored-1:
 							domain.append([(row,column),(row+width,column+length)])
+				# check if there is space for width*length
 				elif row+input_box.length < self.l and column+input_box.width < self.w:
 					for i in xrange(num_stored): 
 						result = box_overlap(row, column, row+input_box.length, 
@@ -132,7 +134,11 @@ class BinPacking:
 						elif result == False and i == num_stored-1:
 							domain.append([(row,column),(row+width,column+length)])
 
-		return domain 
+		return domain
+
+	def getAllDomains(self):
+		for box in self.boxes:
+			self.domain[box.label] = self.getDomain(box)
 
 	# helper function that checks if two boxes are overlapping 
 	def box_overlap(l1x, l1y, r1x, r1y, l2x, l2y, r2x, r2y):
@@ -151,6 +157,20 @@ class BinPacking:
 	# returns new assignments with each possible value assigned to the variable
 	# returned by 'nextVariable'
 	def getSuccessors(self):
+		box = self.nextVariable()
+		domain = self.getDomain(box)
+		successors = []
+		for val in domain:
+			successors.append(self.setVariable(box.label, val[0][0], val[0][1],
+				val[1][0], val[1][1]))
+		return successors
+
+	def getSuccessorsWithForwardChecking(self):
+		return [s for s in self.getSuccessors() if s.forwardCheck()]
+
+	# returns true if all boxes have non-empty domains.
+	def forwardCheck(self):
+		# for key, value in self.domain.iter
 		pass
 
 	# pretty prints the storage space. where the box is located in the storage
