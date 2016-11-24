@@ -28,36 +28,55 @@ class BinPacking:
 		packed = 0
 		areas = [(i, j) for i,j in enumerate(self.boxes)]
 		areas = sorted(areas, key=lambda x:(-x[1].area))
+
 		for label, box in areas:
-			row, column = self.findEmptySpot(box.length, box.width)
-			if (row, column) == (-1,-1):
+			orientation, row, column = self.findEmptySpot(box.length, box.width)
+			if orientation == -1:
 				print "Cannot find empty spot for box", label
-			else:
+			elif orientation == 0:
 				for i in xrange(row, row+box.length):
 					for j in xrange(column, column+box.width):
 						self.storage[i][j] = label
 				packed += 1
+			elif orientation == 1:
+				for i in xrange(row, row+box.width):
+					for j in xrange(column, column+box.length):
+						self.storage[i][j] = label
+				packed += 1
+
 		print "Packed ", packed, "out of", len(self.boxes), "boxes"
 		self.prettyPrintStorage()
 	
-	# returns first empty spot found for a specified length and width. 
+	# returns first empty spot found for a specified length and width and 
+	# orientation to place it in: 0 for length*width, 1 for width*length
 	# if none is found, returns -1
 	def findEmptySpot(self, length, width):
 		for row in xrange(self.l):
 			for column in xrange(self.w):
-				if (self.storage[row][column] == -1 and 
-					row+length < self.l and column+width < self.w):
-					for i in xrange(row, row+length):
-						for j in xrange(column, column+width):
-							if (self.storage[i][j] != -1):
-								continue
-							else:
-								if i == row+length-1 and j == column+width-1:
-									return (row, column)
-		return (-1, -1)
+				if self.storage[row][column] == -1:
+					# check if there is space for length*width
+					if row+length < self.l and column+width < self.w:
+						for i in xrange(row, row+length):
+							for j in xrange(column, column+width):
+								if (self.storage[i][j] != -1):
+									continue
+								else:
+									if i == row+length-1 and j == column+width-1:
+										return (0, row, column)
+					# check if there is space for width*length
+					elif row+width < self.l and column+length < self.w:
+						for i in xrange(row, row+width):
+							for j in xrange(column, column+length):
+								if (self.storage[i][j] != -1):
+									continue
+								else:
+									if i == row+width-1 and j == column+length-1:
+										return (1, row, column)
+
+		return (-1,-1, -1)
 
 	# pretty prints the storage space. where the box is located in the storage
-	# space is indicated by the label. -1 indicates an empty space
+	# space is indicated by its box number/label. -1 indicates an empty space
 	def prettyPrintStorage(self):
 		for i in xrange(self.l):
 			for j in xrange(self.w):
