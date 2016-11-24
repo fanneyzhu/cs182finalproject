@@ -23,6 +23,7 @@ class BinPacking:
 		self.boxes = boxes
 
 	def greedyAlgorithm(self):
+		packed = 0
 		areas = [(i, j) for i,j in enumerate(self.boxes)]
 		areas = sorted(areas, key=lambda x:(-x[1].area))
 		for label, box in areas:
@@ -33,6 +34,8 @@ class BinPacking:
 				for i in xrange(row, row+box.length):
 					for j in xrange(column, column+box.width):
 						self.storage[i][j] = label
+				packed += 1
+		print "Packed ", packed, "out of", len(self.boxes), "boxes"
 		self.prettyPrintStorage()
 	
 	def findEmptySpot(self, length, width):
