@@ -34,6 +34,9 @@ class BinPacking:
 		# domain for box
 		self.domain = {}
 
+		# remaining boxes to be stored
+		self.remaining_boxes = self.boxes
+
 	# greedy approach - sort boxes from largest to smallest area
 	# and pack the largest ones first
 	def greedyAlgorithm(self):
@@ -152,7 +155,16 @@ class BinPacking:
 
 	# returns next variable to try assigning
 	def nextVariable(self):
-		pass
+		self.getAllDomains()
+		min_box = None
+		min_domain = sys.maxint
+		for box, domain in self.domains.iteritems():
+			if box in self.remaining_boxes:
+				len_domain = len(domain)
+				if len_domain < min_domain:
+					min_domain = len_domain
+					min_box = box
+		return min_box
 
 	# returns new assignments with each possible value assigned to the variable
 	# returned by 'nextVariable'
@@ -170,8 +182,10 @@ class BinPacking:
 
 	# returns true if all boxes have non-empty domains.
 	def forwardCheck(self):
-		# for key, value in self.domain.iter
-		pass
+		for key, value in self.domain.iteritems():
+			if len(value) == 0:
+				return False
+		return True
 
 	# pretty prints the storage space. where the box is located in the storage
 	# space is indicated by its box number/label. -1 indicates an empty space
@@ -180,6 +194,21 @@ class BinPacking:
 			for j in xrange(self.w):
 				print self.storage_matrix[i][j],
 			print
+
+
+def solveCSP(problem):
+	statesExplored = 0
+	frontier = [problem]
+	while frontier:
+		state = frontier.pop()
+
+        statesExplored += 1
+        if state.complete():
+            print 'Number of explored: ' + str(statesExplored)
+            return state
+        else:
+            successors = state.getSuccessorsWithForwardChecking()
+            frontier.extend(successors)
 
 
 def main():
