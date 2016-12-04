@@ -16,6 +16,7 @@ class BinPacking:
 		# length and width of storage space
 		self.dim = storage_dimensions
 		
+		# for greedy algorithm
 		self.storage_matrix = []
 		for i in xrange(self.dim[0]):
 			self.storage_matrix.append([])
@@ -33,6 +34,9 @@ class BinPacking:
 		# domain for each box
 		self.domain = {}
 
+		# empty space
+		self.empty_space = self.dim[0]*self.dim[1]
+
 	# greedy approach - sort boxes from largest to smallest area
 	# and pack the largest ones first
 	def greedyAlgorithm(self):
@@ -47,11 +51,13 @@ class BinPacking:
 					for j in xrange(column, column+box.width):
 						self.storage_matrix[i][j] = box.label
 				packed += 1
+				self.empty_space -= box.length*box.width
 			elif orientation == 1:
 				for i in xrange(row, row+box.width):
 					for j in xrange(column, column+box.length):
 						self.storage_matrix[i][j] = box.label
 				packed += 1
+				self.empty_space -= box.length*box.width
 
 		print "Packed", packed, "out of", len(boxes), "boxes"
 	
@@ -198,6 +204,11 @@ class BinPacking:
 					return False
 			return True
 
+	def getEmptySpace(self):
+		for value in self.storage.values():
+			self.empty_space -= (value[1][0]-value[0][0]+1)*(value[1][1]-value[0][1]+1)
+		return self.empty_space
+
 	def getUnstoredBoxesCSP(self):
 		unstored = []
 		for box in self.boxes:
@@ -235,14 +246,19 @@ class BinPacking:
 def solveGreedy(problem):
 	problem.greedyAlgorithm()
 	print 'Could not store boxes:', problem.getUnstoredBoxesGreedy()
+	print 'Empty space:', problem.getEmptySpace()
 	problem.prettyPrintMatrix(problem.storage_matrix)
 
-def solveCSP(problem, trials = 500):
+def solveCSP(problem, trials = 1000):
 	statesExplored = 0
 	frontier = [problem]
 	max_stored = 0
 	max_state = None
+	min_space = problem.dim[0]*problem.dim[1]
+	min_state = None
 	while len(frontier) > 0 and statesExplored < trials:
+		if (statesExplored % 500 == 0):
+			print statesExplored
 		state = frontier.pop()
 		statesExplored += 1
 		if state.complete():
@@ -254,11 +270,24 @@ def solveCSP(problem, trials = 500):
 			if stored > max_stored:
 				max_stored = stored
 				max_state = state
+			space = state.getEmptySpace()
+			if space < min_space:
+				min_space = space
+				min_state = state
 			successors = state.getSuccessorsWithForwardChecking()
 			frontier.extend(successors)
+
 	print 'Packed', max_stored, 'out of', len(max_state.boxes), 'boxes'
 	print 'Could not store boxes:', [box.label for box in max_state.getUnstoredBoxesCSP()]
+	print 'Empty Space:', max_state.getEmptySpace()
 	max_state.prettyPrintStorage()
+	print
+	
+	print 'Packed', len(min_state.storage), 'out of', len(min_state.boxes), 'boxes'
+	print 'Could not store boxes:', [box.label for box in min_state.getUnstoredBoxesCSP()]
+	print 'Empty Space:', min_space
+	min_state.prettyPrintStorage()
+	print
 
 def main():
 	storage_dimensions = (10,10)
