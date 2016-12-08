@@ -9,8 +9,8 @@ class Box:
 		self.length = length
 		self.width = width
 		self.area = length*width
-		self.weight = weight 
 		self.weight_limit = weight_limit
+		self.weight = weight
 
 
 class BinPacking:
@@ -27,7 +27,7 @@ class BinPacking:
 		self.unstored_greedy = []
 		
 		# storage dictionary with key as label and value as list of two tuples
-		# 0: [(topleftx, toplefty), (bottomrightx, bottomrighty), weight_limit, weight]
+		# 0: [(topleftx, toplefty), (bottomrightx, bottomrighty)]
 		self.storage = storage
 		
 		# [Box1, Box2, Box3, ...]
@@ -45,7 +45,7 @@ class BinPacking:
 		packed = 0
 		boxes = sorted(self.boxes, key=lambda x:(-x.area));
 		for box in boxes:
-			orientation, row, column = self.findEmptySpot(box.length, box.width, box.weight_limit, box.weight)
+			orientation, row, column = self.findEmptySpot(box)
 			if orientation == -1:
 				self.unstored_greedy.append(box.label)
 			elif orientation == 0:
@@ -63,85 +63,96 @@ class BinPacking:
 
 		print "Packed", packed, "out of", len(boxes), "boxes"
 
+	# returns overhead weight of box
+	def get_overhead_weight(self, row, column, box, orientation):
+		overhead_weight = 0
+		for key, value in self.storage.iteritems():
+			if box.label != key: # don't add itself to overhead weight
+				if value[1][0] < row: # if the bottom right is above the row (y) of the new box 
+					x_values = range(value[0][1], value[1][1]+1)
+					if box.label in self.storage.keys():
+						y = self.storage[box.label][1][1] - self.storage[box.label][1][0]
+					elif orientation == 0:
+						y = box.width
+					elif orientation == 1:
+						y = box.length
+					overlap = sum([i in x_values for i in xrange(column, column+y+1)])
+					frac = float(overlap)/len(x_values)
+					overhead_weight += frac*self.boxes[key].weight
+
+		return overhead_weight
+
 	# Given a potential position, determine if the box can support the weight on top of it 
 	# and if the boxes underneath it can support the added weight 
 	# 0: [(topleftx, toplefty), (bottomrightx, bottomrighty), weight_limit, weight]
+	# orientation 0 for length*width, 1 for width*length
 	# returns False if no weight violations were found (good!)
-
-	def check_weights(self, row, column, length, width, weight, weight_limit):  
-		overhead_weight = 0
-		for key, value in self.storage.iteritems(): 
-			updated_weight = 0 
-			# add the new box to the weight_limits of the boxes underneath it 
-			if (value[0][0] < row + length): # if the top left corner y is under bottom right of the new box 
-				if (value[0][1] <= column and value[1][1] >= column + width): 
-					updated_weight+=weight
-				elif (value[0][1] >= column and value[1][1] <= column + width): 
-					updated_weight += weight 
-				elif (value[0][1] == column and value[1][1] > column + width) or (value[0][1] < column and value[1][1] == column + width): 
-					updated_weight += weight 
-				elif (value[0][1] > column and value[1][1] > column + width): 
-					# do a fraction of the overhead weight? 
-					updated_weight += weight 
-			if (updated_weight > value[2]): 
-				return True
-
-			# check if the new box can support the weight on top of it 
-			if (value[1][1] > row): # if the bottom right is above the row (y) of the new box 
-				if ((column <= value[0][1]) and (column + width >= value[1][1])): 
-					overhead_weight += value[3]
-				elif (column >= value[0][1] and column + width <= value[1][1]): 
-					overhead_weight += value[3]
-				elif (value[0][1] == column and column + width > value[1][1]) or (column < value[0][1] and value[1][1] == column + width): 
-					overhead_weight += value[3]
-				elif (column > value[0][1] and column + width > value[1][1]): 
-					# do a fraction of the overhead weight? 
-					overhead_weight += value[3]
-			
-		# check if the placement will violate the weight_limit of current box or the boxes underneath it 
-		if (overhead_weight > weight_limit): 
+	def check_weights(self, row, column, box, orientation):
+		weight = self.get_overhead_weight(row, column, box, orientation)
+		if weight > box.weight_limit:
 			return True
-		else: 
+		else:
+			updated_weights = {}
+
+			if orientation == 0:
+				x = range(row, row+box.width)
+				y = box.length
+			elif orientation == 1:
+				x = range(row, row+box.length)
+				y = box.width
+
+			for key, value in self.storage.iteritems(): 
+				# add the new box to the weight_limits of the boxes underneath it
+				if (value[0][0] > row+y-1): # if the top left corner y is under bottom right of the new box
+					overlap = sum([i in x for i in xrange(value[0][1],value[1][1]+1)])
+					frac = float(overlap)/len(x)
+					updated_weights[key] = frac*box.weight
+
+					if (updated_weights[key]+self.get_overhead_weight(
+						value[0][0], value[0][1], self.boxes[key], orientation)
+						> self.boxes[key].weight_limit):
+						return True
+
 			return False
 	
 	# returns first empty spot (top left corner of box) found for a specified 
 	# length and width and orientation to place it in: 0 for length*width, 1 
 	# for width*length. if none is found, returns -1
-	def findEmptySpot(self, length, width, weight, weight_limit):
+	def findEmptySpot(self, box):
 		for row in xrange(self.dim[0]):
 			for column in xrange(self.dim[1]):
 				if self.storage_matrix[row][column] == -1:
 					# check if there is space for length*width
-					if row+length < self.dim[0] and column+width < self.dim[1]:
+					if row+box.length < self.dim[0] and column+box.width < self.dim[1]:
 						# check weights first 
-						if self.check_weights(row, column, length, width, weight, weight_limit) == True: 
+						if self.check_weights(row, column, box, 0) == True: 
 							continue 
-						for i in xrange(row, row+length):
-							for j in xrange(column, column+width):
+						for i in xrange(row, row+box.length):
+							for j in xrange(column, column+box.width):
 								if (self.storage_matrix[i][j] != -1):
 									continue
 								else:
-									if i == row+length-1 and j == column+width-1:
+									if i == row+box.length-1 and j == column+box.width-1:
 										return (0, row, column)
 					# check if there is space for width*length
-					elif row+width < self.dim[0] and column+length < self.dim[1]:
+					elif row+box.width < self.dim[0] and column+box.length < self.dim[1]:
 						# check weights first 
-						if self.check_weights(row, column, length, width, weight, weight_limit) == True: 
+						if self.check_weights(row, column, box, 1) == True: 
 							continue 
-						for i in xrange(row, row+width):
-							for j in xrange(column, column+length):
+						for i in xrange(row, row+box.width):
+							for j in xrange(column, column+box.length):
 								if (self.storage_matrix[i][j] != -1):
 									continue
 								else:
-									if i == row+width-1 and j == column+length-1:
+									if i == row+box.width-1 and j == column+box.length-1:
 										return (1, row, column)
 
 		return (-1,-1, -1)
 
 	# creates a new version of the storage list with box assigned
-	def setVariable(self, label, topleftx, toplefty, bottomrightx, bottomrighty, weight_limit, weight):
+	def setVariable(self, label, topleftx, toplefty, bottomrightx, bottomrighty):
 		new_storage = copy.deepcopy(self.storage)
-		new_storage[label] = [(topleftx, toplefty), (bottomrightx, bottomrighty), weight_limit, weight]
+		new_storage[label] = [(topleftx, toplefty), (bottomrightx, bottomrighty)]
 		return BinPacking(self.dim, self.boxes, new_storage)
 
 	# returns most constrained variable to assign next
@@ -164,54 +175,54 @@ class BinPacking:
 
 	# returns a list of the available locations for a given box 
 	# in the storage space
-	def variableDomain(self, input_box):
+	def variableDomain(self, box):
 		domain = set()
-		if input_box:
-			for row in xrange(self.dim[0]): 
+		if box:
+			for row in xrange(self.dim[0]):
 				for column in xrange(self.dim[1]):
 					# check if there is space for length*width
-					new_row = row+input_box.length-1
-					new_col = column+input_box.width-1
+					new_row = row+box.length-1
+					new_col = column+box.width-1
 					location = ((row,column),(new_row,new_col))
 					if new_row < self.dim[0] and new_col < self.dim[1]:
 						if len(self.storage) == 0:
 							domain.add(location)
 						else:
-							overweight = self.check_weights(row, column, input_box.length, input_box.width, input_box.weight, input_box.weight_limit) 
 							overlap = False
 							for key, value in self.storage.iteritems():
-								result = self.box_overlap(row, column, new_row, 
-									column+new_col, value[0][0], 
-									value[0][1], value[1][0], value[1][1])
+								result = self.box_overlap(row, column, new_row,
+									new_col, value[0][0], value[0][1],
+									value[1][0], value[1][1])
 								if result == True:
 									overlap = True
 									break
-							if overlap == False and overweight == False:
-								domain.add(location)
+							if overlap == False:
+								if not self.check_weights(row, column, box, 0):
+									domain.add(location)
 
 					# check if there is space for width*length
-					new_row = row+input_box.width-1
-					new_col = column+input_box.length-1
+					new_row = row+box.width-1
+					new_col = column+box.length-1
 					location = ((row,column),(new_row,new_col))
 					if new_row < self.dim[0] and new_col < self.dim[1]:
 						if len(self.storage) == 0:
 							domain.add(location)
 						else:
-							overweight = self.check_weights(row, column, input_box.length, input_box.width, input_box.weight, input_box.weight_limit)
 							overlap = False
 							for key, value in self.storage.iteritems(): 
-								result = self.box_overlap(row, column, new_row, 
-									new_col, value[0][0], 
-									value[0][1], value[1][0], value[1][1])
+								result = self.box_overlap(row, column, new_row,
+									new_col, value[0][0], value[0][1], 
+									value[1][0], value[1][1])
 								if result == True:
 									overlap = True
 									break
-							if overlap == False and overweight == False:
-								domain.add(location)
+							if overlap == False:
+								if not self.check_weights(row, column, box, 1):
+									domain.add(location)
 		return domain
 
 	def getAllDomains(self):
-		for box in self.boxes:
+		for box in self.getUnstoredBoxesCSP():
 			self.domain[box.label] = self.variableDomain(box)
 
 	# helper function that checks if two boxes are overlapping 
@@ -234,11 +245,10 @@ class BinPacking:
 	# returned by 'nextVariable'
 	def getSuccessors(self):
 		box = self.nextVariable()
-		domain = self.variableDomain(box)
 		successors = []
-		for val in domain:
+		for val in self.domain[box.label]:
 			successors.append(self.setVariable(box.label, val[0][0], val[0][1],
-				val[1][0], val[1][1], box.weight_limit, box.weight))
+				val[1][0], val[1][1]))
 		return successors
 
 	def getSuccessorsWithForwardChecking(self):
@@ -250,8 +260,8 @@ class BinPacking:
 			return True
 		else:
 			self.getAllDomains()
-			for key, value in self.domain.iteritems():
-				if len(value) == 0:
+			for box in self.getUnstoredBoxesCSP():
+				if len(self.domain[box.label]) == 0:
 					return False
 			return True
 
@@ -300,7 +310,7 @@ def solveGreedy(problem):
 	print 'Empty space:', problem.getEmptySpace()
 	problem.prettyPrintMatrix(problem.storage_matrix)
 
-def solveCSP(problem, trials = 1000):
+def solveCSP(problem, trials = 500):
 	statesExplored = 0
 	frontier = [problem]
 	max_stored = 0
@@ -314,6 +324,7 @@ def solveCSP(problem, trials = 1000):
 		statesExplored += 1
 		if state.complete():
 			print 'Number of explored: ' + str(statesExplored)
+			print 'Empty Space:', state.getEmptySpace()
 			state.prettyPrintStorage()
 			return state
 		else:
@@ -328,21 +339,23 @@ def solveCSP(problem, trials = 1000):
 			successors = state.getSuccessorsWithForwardChecking()
 			frontier.extend(successors)
 
-	print 'Packed', max_stored, 'out of', len(max_state.boxes), 'boxes'
-	print 'Could not store boxes:', [box.label for box in max_state.getUnstoredBoxesCSP()]
-	print 'Empty Space:', max_state.getEmptySpace()
-	max_state.prettyPrintStorage()
-	print
+	if max_state:
+		print 'Packed', max_stored, 'out of', len(max_state.boxes), 'boxes'
+		print 'Could not store boxes:', [box.label for box in max_state.getUnstoredBoxesCSP()]
+		print 'Empty Space:', max_state.getEmptySpace()
+		max_state.prettyPrintStorage()
+		print
 	
-	print 'Packed', len(min_state.storage), 'out of', len(min_state.boxes), 'boxes'
-	print 'Could not store boxes:', [box.label for box in min_state.getUnstoredBoxesCSP()]
-	print 'Empty Space:', min_space
-	min_state.prettyPrintStorage()
-	print
+	if min_state:
+		print 'Packed', len(min_state.storage), 'out of', len(min_state.boxes), 'boxes'
+		print 'Could not store boxes:', [box.label for box in min_state.getUnstoredBoxesCSP()]
+		print 'Empty Space:', min_space
+		min_state.prettyPrintStorage()
+		print
 
 def main():
 	storage_dimensions = (10,10)
-	boxes = [Box(0,2,2,20,1), Box(1,1,3,100,1), Box(2,4,4,100,1), Box(3,2,2,100,1), Box(4,2,4,100,1), Box(5,2,5,100,1), Box(6,3,3,100,1), Box(7,3,5,100,1), Box(8,4,4,100,1)]
+	boxes = [Box(0,2,2,1,1), Box(1,1,3,100,1), Box(2,4,4,100,10), Box(3,2,2,20,1), Box(4,2,4,100,10), Box(5,2,5,100,1), Box(6,3,3,100,1), Box(7,3,5,100,1), Box(8,4,4,100,1)]
 	storage = {}
 	start = BinPacking(storage_dimensions, boxes, storage)
 	print "greedy: "
@@ -350,9 +363,9 @@ def main():
 	print "CSP: "
 	solveCSP(start)
 	
-	# s = (5,5)
-	# boxes = [Box(0,5,4), Box(1,1,5)]
-	# storage = {0: [(0, 0), (4, 3)]}
+	# s = (10,5)
+	# boxes = [Box(0,5,4,100,10), Box(1,1,5,100,10), Box(2,5,4,100,10), Box(3,1,5,100,10)]
+	# storage = {}
 	# start = BinPacking(s, boxes, storage)
 	# solveCSP(start)
 
