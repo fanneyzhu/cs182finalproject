@@ -85,7 +85,7 @@ class BinPacking:
 					updated_weight += weight 
 			if (updated_weight > value[2]): 
 				return True
-
+				
 			# check if the new box can support the weight on top of it 
 			if (value[1][1] > row): # if the bottom right is above the row (y) of the new box 
 				if ((column <= value[0][1]) and (column + width >= value[1][1])): 
