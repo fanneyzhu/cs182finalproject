@@ -1,20 +1,30 @@
+# Greedy and CSP for 2D packing 
+# Daniel Wang, Fanney Zhu
+# Harvard University, CS182
+# 2016
+
 import random
 import sys
 import timeit
 import copy
+import numpy as np
 
 class Box:
-	def __init__(self, label, length, width, weight_limit, weight):
+	# if box has up=1, box must be placed length*width
+	# else, box can be placed in any orientation
+	# boxes with the same group need to be placed together/adjacent to each other
+	def __init__(self, label, length, width, weight_limit, weight, up=0):
 		self.label = label
 		self.length = length
 		self.width = width
 		self.area = length*width
 		self.weight_limit = weight_limit
 		self.weight = weight
-
+		self.up = up
 
 class BinPacking:
-	def __init__(self, storage_dimensions, boxes, storage):
+	# max height for boxes with weights over 50, default will be half the storage height
+	def __init__(self, storage_dimensions, boxes, storage, max_height=None):
 		# length and width of storage space
 		self.dim = storage_dimensions
 		
@@ -38,6 +48,14 @@ class BinPacking:
 
 		# empty space
 		self.empty_space = self.dim[0]*self.dim[1]
+
+		if not max_height:
+			self.max_height = float(self.dim[0])/2
+		else:
+			self.max_height = max_height
+
+	def greedyCheckWeights(self):
+		pass
 
 	# greedy approach - sort boxes from largest to smallest area
 	# and pack the largest ones first
@@ -64,7 +82,7 @@ class BinPacking:
 		print "Packed", packed, "out of", len(boxes), "boxes"
 
 	# returns overhead weight of box
-	def get_overhead_weight(self, row, column, box, orientation):
+	def getOverheadWeight(self, row, column, box, orientation):
 		overhead_weight = 0
 		for key, value in self.storage.iteritems():
 			if box.label != key: # don't add itself to overhead weight
@@ -87,8 +105,8 @@ class BinPacking:
 	# 0: [(topleftx, toplefty), (bottomrightx, bottomrighty), weight_limit, weight]
 	# orientation 0 for length*width, 1 for width*length
 	# returns False if no weight violations were found (good!)
-	def check_weights(self, row, column, box, orientation):
-		weight = self.get_overhead_weight(row, column, box, orientation)
+	def checkWeights(self, row, column, box, orientation):
+		weight = self.getOverheadWeight(row, column, box, orientation)
 		if weight > box.weight_limit:
 			return True
 		else:
@@ -108,7 +126,7 @@ class BinPacking:
 					frac = float(overlap)/len(x)
 					updated_weights[key] = frac*box.weight
 
-					if (updated_weights[key]+self.get_overhead_weight(
+					if (updated_weights[key]+self.getOverheadWeight(
 						value[0][0], value[0][1], self.boxes[key], orientation)
 						> self.boxes[key].weight_limit):
 						return True
@@ -123,29 +141,23 @@ class BinPacking:
 			for column in xrange(self.dim[1]):
 				if self.storage_matrix[row][column] == -1:
 					# check if there is space for length*width
-					if row+box.length < self.dim[0] and column+box.width < self.dim[1]:
-						# check weights first 
-						if self.check_weights(row, column, box, 0) == True: 
-							continue 
+					if row+box.length-1 < self.dim[0] and column+box.width-1 < self.dim[1]:
+						valid = True
 						for i in xrange(row, row+box.length):
 							for j in xrange(column, column+box.width):
 								if (self.storage_matrix[i][j] != -1):
-									continue
-								else:
-									if i == row+box.length-1 and j == column+box.width-1:
-										return (0, row, column)
+									valid = False
+								if valid and i == row+box.length-1 and j == column+box.width-1:
+									return (0, row, column)
 					# check if there is space for width*length
-					elif row+box.width < self.dim[0] and column+box.length < self.dim[1]:
-						# check weights first 
-						if self.check_weights(row, column, box, 1) == True: 
-							continue 
+					if row+box.width-1 < self.dim[0] and column+box.length-1 < self.dim[1]:
+						valid = True
 						for i in xrange(row, row+box.width):
 							for j in xrange(column, column+box.length):
 								if (self.storage_matrix[i][j] != -1):
-									continue
-								else:
-									if i == row+box.width-1 and j == column+box.length-1:
-										return (1, row, column)
+									valid = False
+								if i == row+box.width-1 and j == column+box.length-1:
+									return (1, row, column)
 
 		return (-1,-1, -1)
 
@@ -162,7 +174,7 @@ class BinPacking:
 		min_domains = sys.maxint
 		for i in self.getUnstoredBoxesCSP():
 			domains = len(self.domain[i.label])
-			if domains < min_domains:
+			if domains < min_domains and domains > 0:
 				min_domains = domains
 				box = i
 		return box
@@ -178,7 +190,10 @@ class BinPacking:
 	def variableDomain(self, box):
 		domain = set()
 		if box:
-			for row in xrange(self.dim[0]):
+			rows = range(self.dim[0])
+			if box.weight > 50:
+				rows = range(int(self.max_height), self.dim[0])
+			for row in rows:
 				for column in xrange(self.dim[1]):
 					# check if there is space for length*width
 					new_row = row+box.length-1
@@ -190,35 +205,37 @@ class BinPacking:
 						else:
 							overlap = False
 							for key, value in self.storage.iteritems():
-								result = self.box_overlap(row, column, new_row,
+								result = self.boxOverlap(row, column, new_row,
 									new_col, value[0][0], value[0][1],
 									value[1][0], value[1][1])
 								if result == True:
 									overlap = True
 									break
 							if overlap == False:
-								if not self.check_weights(row, column, box, 0):
+								if not self.checkWeights(row, column, box, 0):
 									domain.add(location)
 
-					# check if there is space for width*length
-					new_row = row+box.width-1
-					new_col = column+box.length-1
-					location = ((row,column),(new_row,new_col))
-					if new_row < self.dim[0] and new_col < self.dim[1]:
-						if len(self.storage) == 0:
-							domain.add(location)
-						else:
-							overlap = False
-							for key, value in self.storage.iteritems(): 
-								result = self.box_overlap(row, column, new_row,
-									new_col, value[0][0], value[0][1], 
-									value[1][0], value[1][1])
-								if result == True:
-									overlap = True
-									break
-							if overlap == False:
-								if not self.check_weights(row, column, box, 1):
-									domain.add(location)
+					# check if there is space for width*length if orientation of box
+					# is not restricted
+					if box.up == 0:
+						new_row = row+box.width-1
+						new_col = column+box.length-1
+						location = ((row,column),(new_row,new_col))
+						if new_row < self.dim[0] and new_col < self.dim[1]:
+							if len(self.storage) == 0:
+								domain.add(location)
+							else:
+								overlap = False
+								for key, value in self.storage.iteritems(): 
+									result = self.boxOverlap(row, column, new_row,
+										new_col, value[0][0], value[0][1], 
+										value[1][0], value[1][1])
+									if result == True:
+										overlap = True
+										break
+								if overlap == False:
+									if not self.checkWeights(row, column, box, 1):
+										domain.add(location)
 		return domain
 
 	def getAllDomains(self):
@@ -226,7 +243,7 @@ class BinPacking:
 			self.domain[box.label] = self.variableDomain(box)
 
 	# helper function that checks if two boxes are overlapping 
-	def box_overlap(self, l1x, l1y, r1x, r1y, l2x, l2y, r2x, r2y):
+	def boxOverlap(self, l1x, l1y, r1x, r1y, l2x, l2y, r2x, r2y):
 		if (r1x < l2x):
 			return False # a is left of b
 		if (l1x > r2x): 
@@ -246,9 +263,10 @@ class BinPacking:
 	def getSuccessors(self):
 		box = self.nextVariable()
 		successors = []
-		for val in self.domain[box.label]:
-			successors.append(self.setVariable(box.label, val[0][0], val[0][1],
-				val[1][0], val[1][1]))
+		if box:
+			for val in self.domain[box.label]:
+				successors.append(self.setVariable(box.label, val[0][0], val[0][1],
+					val[1][0], val[1][1]))
 		return successors
 
 	def getSuccessorsWithForwardChecking(self):
@@ -265,10 +283,14 @@ class BinPacking:
 					return False
 			return True
 
-	def getEmptySpace(self):
-		for value in self.storage.values():
-			self.empty_space -= (value[1][0]-value[0][0]+1)*(value[1][1]-value[0][1]+1)
-		return self.empty_space	
+	def getEmptySpaceCSP(self):
+		result = self.dim[0] * self.dim[1]
+		for key in self.storage.keys():
+			result -= self.boxes[key].length*self.boxes[key].width
+		return result
+
+	def getEmptySpaceGreedy(self):
+		return max(0,self.empty_space)
 
 	def getUnstoredBoxesCSP(self):
 		unstored = []
@@ -307,10 +329,13 @@ class BinPacking:
 def solveGreedy(problem):
 	problem.greedyAlgorithm()
 	print 'Could not store boxes:', problem.getUnstoredBoxesGreedy()
-	print 'Empty space:', problem.getEmptySpace()
+	empty_space = problem.getEmptySpaceGreedy()
+	print 'Empty space:', empty_space
 	problem.prettyPrintMatrix(problem.storage_matrix)
+	return empty_space
 
-def solveCSP(problem, trials = 500):
+
+def solveCSP(problem, trials = 5000):
 	statesExplored = 0
 	frontier = [problem]
 	max_stored = 0
@@ -318,33 +343,25 @@ def solveCSP(problem, trials = 500):
 	min_space = problem.dim[0]*problem.dim[1]
 	min_state = None
 	while len(frontier) > 0 and statesExplored < trials:
-		if (statesExplored % 500 == 0):
-			print statesExplored
+		# if (statesExplored % 500 == 0):
+		# 	print statesExplored
 		state = frontier.pop()
 		statesExplored += 1
 		if state.complete():
 			print 'Number of explored: ' + str(statesExplored)
-			print 'Empty Space:', state.getEmptySpace()
+			empty_space = state.getEmptySpaceCSP()
+			print 'Empty Space:', empty_space
 			state.prettyPrintStorage()
-			return state
+			return empty_space
 		else:
-			stored = len(state.storage)
-			if stored > max_stored:
-				max_stored = stored
-				max_state = state
-			space = state.getEmptySpace()
+			space = state.getEmptySpaceCSP()
 			if space < min_space:
 				min_space = space
 				min_state = state
 			successors = state.getSuccessorsWithForwardChecking()
+			if len(successors) == 0:
+				successors = state.getSuccessors()
 			frontier.extend(successors)
-
-	if max_state:
-		print 'Packed', max_stored, 'out of', len(max_state.boxes), 'boxes'
-		print 'Could not store boxes:', [box.label for box in max_state.getUnstoredBoxesCSP()]
-		print 'Empty Space:', max_state.getEmptySpace()
-		max_state.prettyPrintStorage()
-		print
 	
 	if min_state:
 		print 'Packed', len(min_state.storage), 'out of', len(min_state.boxes), 'boxes'
@@ -353,21 +370,115 @@ def solveCSP(problem, trials = 500):
 		min_state.prettyPrintStorage()
 		print
 
-def main():
-	storage_dimensions = (10,10)
-	boxes = [Box(0,2,2,1,1), Box(1,1,3,100,1), Box(2,4,4,100,10), Box(3,2,2,20,1), Box(4,2,4,100,10), Box(5,2,5,100,1), Box(6,3,3,100,1), Box(7,3,5,100,1), Box(8,4,4,100,1)]
+	return min_space
+
+
+def generateBoxes(num_boxes, max_length, max_width, max_weight, max_weight_limit):
+	boxes = []
+	for i in xrange(num_boxes):
+		length = random.randint(1,max_length)
+		width = random.randint(1,max_width)
+		weight = random.randint(1,max_weight)
+		weight_limit = random.randint(1,max_weight_limit)
+		prob = random.randint(1,10)
+		up = 0
+		if prob < 3:
+			up = 1
+		boxes.append(Box(i, length, width, weight_limit, weight, up))
+	return boxes
+
+
+def easyTestRun():
+	s = (10,5)
+	boxes = [Box(0,5,4,200,60), Box(1,1,5,200,1,1), Box(2,5,4,200,60), Box(3,1,5,200,1,1)]
+	storage = {}
+	start = BinPacking(s, boxes, storage)
+	print "greedy: "
+	solveGreedy(start)
+	print "CSP: "
+	solveCSP(start)
+
+
+def hardTestRun():
+	storage_dimensions = (9,9)
+	boxes = [Box(0,2,2,1,1), Box(1,1,3,100,1), Box(2,4,4,100,60), Box(3,2,2,20,1), Box(4,2,4,100,10), Box(5,2,5,100,1), Box(6,3,3,100,60), Box(7,3,5,100,1), Box(8,4,4,100,1)]
 	storage = {}
 	start = BinPacking(storage_dimensions, boxes, storage)
 	print "greedy: "
 	solveGreedy(start)
 	print "CSP: "
 	solveCSP(start)
-	
-	# s = (10,5)
-	# boxes = [Box(0,5,4,100,10), Box(1,1,5,100,10), Box(2,5,4,100,10), Box(3,1,5,100,10)]
-	# storage = {}
-	# start = BinPacking(s, boxes, storage)
-	# solveCSP(start)
+
+
+def collectData():
+	greedy_empty_mean = []
+	csp_empty_mean = []
+
+	greedy_empty = []
+	csp_empty = []
+
+	s = (10,10)
+	sims = 10
+	print "10"
+	for i in xrange(sims):
+		boxes = generateBoxes(50,8,8,20,100)
+		storage = {}
+		start = BinPacking(s, boxes, storage)
+
+		greedy_empty.append(solveGreedy(start))
+		csp_empty.append(solveCSP(start))
+
+	np.savetxt('data/10x10_new.csv', (greedy_empty, csp_empty), delimiter=',')
+	greedy_empty_mean.append(float(sum(greedy_empty))/sims)
+	csp_empty_mean.append(float(sum(csp_empty))/sims)
+
+	greedy_empty = []
+	csp_empty = []
+
+	s = (25,25)
+	sims = 10
+	print "25"
+	for i in xrange(sims):
+		boxes = generateBoxes(50,15,15,30,100)
+		storage = {}
+		start = BinPacking(s, boxes, storage)
+
+		greedy_empty.append(solveGreedy(start))
+		csp_empty.append(solveCSP(start))
+
+	np.savetxt('data/25x25_new.csv', (greedy_empty, csp_empty), delimiter=',')
+	greedy_empty_mean.append(float(sum(greedy_empty))/sims)
+	csp_empty_mean.append(float(sum(csp_empty))/sims)
+
+	greedy_empty = []
+	csp_empty = []
+
+	print "50"
+	s = (50,50)
+	sims = 10
+	for i in xrange(sims):
+		boxes = generateBoxes(50,40,40,40,100)
+		storage = {}
+		start = BinPacking(s, boxes, storage)
+
+		greedy_empty.append(solveGreedy(start))
+		csp_empty.append(solveCSP(start))
+
+	np.savetxt('data/50x50_new.csv', (greedy_empty, csp_empty), delimiter=',')
+	greedy_empty_mean.append(float(sum(greedy_empty))/sims)
+	csp_empty_mean.append(float(sum(csp_empty))/sims)
+
+	print greedy_empty_mean
+	print csp_empty_mean
+
+	np.savetxt('data/mean_new.csv', (greedy_empty_mean, csp_empty_mean), delimiter=',')
+
+
+def main():
+	easyTestRun()
+	hardTestRun()
+	# collectData()
+
 
 if __name__ == '__main__':
 	main()
